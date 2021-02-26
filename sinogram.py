@@ -4,6 +4,7 @@ from PIL import Image
 from scipy import fftpack
 from skimage.transform import rotate
 
+
 #Load in sinogram
 sinogram = np.array(Image.open("sinogram.png"))
 
@@ -21,12 +22,15 @@ def get_im_size(sinogram):
     zeros = True
     i=0
     num_zeros = 0
+    #Count number of leading zeros to determine size of
+    #original image
     while (zeros == True):
         if (sinogram[1,i] == 0):
             num_zeros += 1
         else:
             zeros = False
         i+=1
+    #num_zeros*2 because leading zeros = trailing zeros (aspect ratio 1:1)
     length = length - (num_zeros*2)
     return length
 
@@ -41,8 +45,13 @@ def ramp_filter(fft):
     return ramp*fft
 
 #Mulyiply a frequency domain image by hamming window
+#Input already ramp filtered
 def window(fft):
-    window = np.hamming(fft.shape[1])
+    shape = fft.shape[1]/2
+    ramp = np.floor(np.arange(0.5, fft.shape[1]//2 + 0.1,0.5))
+    c=0.54
+    window = c+(1-c)*np.cos(np.pi*ramp/shape)
+    
     return window*fft
 
 #Convert images to 8 bit values (between 0 and 255)
@@ -60,17 +69,20 @@ def reconstruct(fft,length):
     steps = 360
     dtheta = 180/steps
     
+    #Rotate and backproject each row of sinogram
     for i in range(steps):
         temp = np.tile(image[i,:],(image.shape[1],1))
         temp = rotate(temp, dtheta*i)
         recon_image += temp
         
+    #crop image to original size
     padding_width = (image.shape[1]-length)/2
     left = int(padding_width)
     right = int(padding_width+length)
     
     crop_image = recon_image[left:right, left:right]
     
+    #Convert image to 8 bit (between 0 and 255)
     crop_image = convert_to_8bit(crop_image)
 
     return crop_image
@@ -85,6 +97,7 @@ def build_image(r,g,b,length):
     image = np.dstack((red_ch,green_ch,blue_ch))
     return image
 
+#Get original size of image
 length = get_im_size(red)
 
 ##Reconstruct with no filtering
@@ -95,7 +108,7 @@ red_ramp = ramp_filter(get_fft(red))
 green_ramp = ramp_filter(get_fft(green))
 blue_ramp = ramp_filter(get_fft(blue))
 
-ramp_filter = build_image(red_ramp,green_ramp,blue_ramp,length)
+ramp_filter_image = build_image(red_ramp,green_ramp,blue_ramp,length)
 
 ##Reconstruct with ramp filter and window
 red_win = window(red_ramp)
@@ -105,7 +118,7 @@ blue_win = window(blue_ramp)
 window_ramp = build_image(red_win,green_win,blue_win,length)
 
 
-
+#Plot images
 plt.figure(1)
 plt.imshow(no_filter,vmin=0,vmax=255)
 plt.axis("off")
@@ -113,7 +126,7 @@ plt.title('Image Reconstructed Without Ramp Filtering or Windowing')
 plt.show()
 
 plt.figure(2)
-plt.imshow(ramp_filter,vmin=0,vmax=255)
+plt.imshow(ramp_filter_image,vmin=0,vmax=255)
 plt.axis("off")
 plt.title('Image Reconstructed With Ramp Filtering and No Windowing')
 plt.show()
